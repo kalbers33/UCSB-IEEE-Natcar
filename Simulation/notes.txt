@@ -1,0 +1,15 @@
+Servo signal happens every 20ms which means that the fastest control loop we can run is 50 Hz.
+
+
+use 2 m/s as the test speed.
+
+use car length of 8 inches
+sensor is 4.5 inches ahead of front tires
+turning angle of tires is 35 degrees
+
+servo is Hextronik D-MG16
+0.08 sec / 60 degrees
+
+assume 0.08 sec per 35 degree of wheel turn
+
+

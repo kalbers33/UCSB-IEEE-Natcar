@@ -1,0 +1,8 @@
+#! /usr/bin/zsh
+
+rm -f ./generated_files/run_output.csv
+
+python3 car_runner.py 
+
+octave plot_prog.m
+
