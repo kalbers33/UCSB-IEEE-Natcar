@@ -11,4 +11,4 @@ Additional Dependencies (All are required):
 * [PySerial](http://pyserial.sourceforge.net/): Python interface for serial communications.
 * [PyQWT](http://pyqwt.sourceforge.net/): Python bindings for the QWT widget toolkit.
 
-Once you have those installed, just run 'python natgui.py' to bring up the interface. Enter the serial port your XBee is connected to and hit the "Connect!" button. If successfully connected, then the botton status bar will blink green and indicate successful connection. If not, an error messsage will pop up with diagnostic information.
+Once you have those installed, just run 'python natgui.py' to bring up the interface. Enter the serial port your XBee is connected to and hit the "Connect!" button. If successfully connected, then the botton status bar indicate successful connection. If not, an error messsage will pop up with diagnostic information.
