@@ -44,6 +44,7 @@ class SerialWorker(QThread):
           self.serialPort.write(cmd)
           # RESPONSE
           resp = self.serialPort.read(3)
+          self.serialPort.flush()
           if resp == "AOK":
             # OK response; invoke callback
             callback("AOK", None, None)
@@ -67,11 +68,10 @@ class SerialWorker(QThread):
           else:
             # invalid response--help!
             print "Recieved invalid response from remote!"
-        self.serialPort.flush()
         self.serialPort.flushInput()
       except Exception as e:
         QMessageBox.critical(self, "EXCEPTION", "Serial communication loop failed;"+str(e))
-        self.isPolling = False
+        self.stopThread()
   
   def sendCommand(self, command, callback):
     self.cmdBuffer.append((command, callback))
