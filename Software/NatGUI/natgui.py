@@ -25,83 +25,101 @@ def serial_ports():
     for port in list_ports.comports():
       yield port[0]
 
-class SerialEngine(QObject):
-  onReceive = Signal()
-  onConnect = Signal()
-  onDisconnect = Signal()
-  finished = Signal()
-  
+class SerialWorker(QThread):
   def __init__(self):
-    super(SerialEngine, self).__init__()
-    self.serialPort = serial.Serial()
-    self.poll = False
+    super(SerialWorker, self).__init__()
+    self.serialPort = None
+    self.isPolling = False
+    self.cmdBuffer = list()
 
-  def make_connect(self, port, baudrate=9600):
-    print "Connecting to:", port
-    if self.serialPort.isOpen():
-      self.serialPort.close()
-    self.serialPort.port = port
-    self.serialPort.timeout = 5.0
-    try:
-      self.serialPort.open()
-      # handshake with remote
-      self.serialPort.write("HELLO")
-      if self.serialPort.read(len("HAI")) != "HAI":
-        raise Exception("Remote host did not respond properly.")
-      self.onConnect.emit()
-      self.poll = True
-      return True
-    except Exception as e:
-      print "Failed to connect:", str(e)
-      self.poll = False
-      self.onDisconnect.emit()
-      return False
+  def run(self):
+    self.isPolling = True
+    while self.isPolling and self.serialPort:
+      try:
+        # all communication goes through the command/response cycle.
+        if self.cmdBuffer:
+          cmd, callback = self.cmdBuffer.pop(0)
+          print "Sending command:", cmd
+          # COMMAND
+          self.serialPort.write(cmd)
+          # RESPONSE
+          resp = self.serialPort.read(3)
+          if resp == "AOK":
+            # OK response; invoke callback
+            callback("AOK", None, None)
+          elif resp == "DAT":
+            # DATA response; get data length and read it
+            # read next 4 characters; length of data
+            dataLen = self.serialPort.read(4)
+            dataLen = int(dataLen)
+            # then read that datalength:
+            data = self.serialPort.read(dataLen)
+            # then invoke callback:
+            callback("DAT", data, dataLen)
+          elif resp == "ERR":
+            # non-critical error;
+            # read error-message length
+            errLen = self.serialPort.read(4)
+            errLen = int(errLen)
+            error = self.serialPort.read(errLen)
+            # invoke callback
+            callback("ERR", error, errLen)
+          else:
+            # invalid response--help!
+            print "Recieved invalid response from remote!"
+        self.serialPort.flush()
+        self.serialPort.flushInput()
+      except Exception as e:
+        QMessageBox.critical(self, "EXCEPTION", "Serial communication loop failed;"+str(e))
+        self.isPolling = False
+  
+  def sendCommand(self, command, callback):
+    self.cmdBuffer.append((command, callback))
 
-  def loop_poll(self):
-    while self.serialPort.isOpen() and self.poll:
-      # do polling
-      #print "YEHAW"
-      pass
-    self.finished.emit()
+  def stopThread(self):
+    self.isPolling = False
 
-  def disconnect(self):
-    self.poll = False
-    if self.serialPort.isOpen():
-      print "Closing connections..."
-      self.serialPort.close()
-    self.onDisconnect.emit()
+  def setPort(self, serialPort):
+    self.serialPort = serialPort
 
 class NatGUI(QMainWindow):
   def __init__(self):
     super(NatGUI, self).__init__()
-    self.serialEngine = SerialEngine()
-    self.serialThread = QThread()
-    self.serialEngine.moveToThread(self.serialThread)
-    self.serialThread.started.connect(self.serialEngine.loop_poll)
-    self.serialEngine.finished.connect(self.serialThread.quit)
-    self.serialEngine.finished.connect(self.serialEngine.deleteLater)
-    self.serialThread.finished.connect(self.serialThread.deleteLater)
+    self.serialPort = serial.Serial()
+    self.serialThread = SerialWorker()
     self.initUI()
  
   def gracefulStop(self):
-    self.serialEngine.disconnect()
+    self.serialThread.stopThread()
     self.serialThread.wait()
     self.serialThread.quit()
+    if self.serialPort.isOpen():
+      print "Closing connections..."
+      self.serialPort.close()
+    print "Connection closed!"
 
   def getSerialPorts(self):
     self.comPort.clear()
     for port in list(serial_ports()):
       self.comPort.addItem(port)
 
-  def doConnect(self):
+  def restartThread(self):
     if self.serialThread.isRunning():
       self.gracefulStop()
-    if not self.serialEngine.make_connect(self.comPort.currentText()):
-      QMessageBox.critical(self, "Error", "Cannot connect to remote. Check console for details.")
-    else:
-      # start polling thread
-      self.serialThread.start()
-      self.statusBar().showMessage('Successfully connected to remote!')
+    self.serialThread.start()
+
+  def doConnect(self):
+    port = self.comPort.currentText()
+    print "Connecting to:", port
+    if self.serialPort.isOpen():
+      self.serialPort.close()
+    self.serialPort.port = port
+    self.serialPort.timeout = 5.0
+    self.serialPort.baudrate = 9600
+    self.serialPort.open()
+    self.serialThread.setPort(self.serialPort)
+    # handshake with remote
+    self.serialThread.sendCommand("HAI", self.onPing)
     
   def initUI(self):
     # layout basics
@@ -138,6 +156,16 @@ class NatGUI(QMainWindow):
     #self.setGeometry(300, 300, 250, 150)
     self.setWindowTitle('NatGUI')    
     self.show()
+
+  # CALLBACKS
+  def onPing(self, status, response, length):
+    if status == "AOK":
+      print "Remote is okay :)"
+      self.statusBar().showMessage('Successfully connected to remote!')
+      self.restartThread()
+    else:
+      QMessageBox.critical(self, "Error", "Cannot connect to remote. Check console for details.")
+      print "Remote host did not respond properly."
 
 if __name__ == "__main__":
   app = QApplication(sys.argv)
